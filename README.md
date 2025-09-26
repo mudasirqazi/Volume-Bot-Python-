@@ -1,130 +1,150 @@
-📊 Volume Bot (Python)
+# 🔍 Solana Scanner  
 
-A FastAPI-based Solana analytics & trading assistant.
-The bot fetches on-chain liquidity pool state data, parses AMM configurations, tracks vault balances, and stores buy/sell transaction history in a database.
+A high-performance **Solana blockchain scanner** written in Rust.  
+It continuously monitors Solana slots, processes blocks, and applies customizable filters to detect specific on-chain activity (e.g., **Raydium V4 liquidity events**).  
+Optionally, events can be published to **RabbitMQ** for downstream processing.  
 
-✨ Features
+---
 
-⚡ Solana blockchain integration via solders client.
+## ✨ Features  
+- ⏱ Real-time scanning of Solana mainnet (via RPC + WebSocket).  
+- ⚡ Concurrent block processing with configurable queue capacity.  
+- 🧩 Pluggable transaction filters (currently supports **Raydium V4 Liquidity**).  
+- 📡 Optional **RabbitMQ integration** for event publishing.  
+- 🛠 Configurable via `.env` file (no code changes required).  
+- 📜 Structured logging with `tracing`.  
+- ✅ Error handling & graceful shutdown (`Ctrl+C`).  
 
-🔍 Liquidity Pool State Parser:
+---
 
-Fetch pool config, vault balances, LP supply, fees, and observations.
+## 📂 Project Structure  
+```
+src/
+ ├── main.rs          # Entry point
+ ├── config.rs        # Loads environment configuration
+ ├── error.rs         # Error definitions
+ ├── filter.rs        # Trait for building custom filters
+ ├── filters/         # Built-in filters (e.g. Raydium V4 Liquidity)
+ ├── scanner.rs       # Core scanner logic
+ └── rabbitmq.rs      # RabbitMQ integration (feature-gated)
+```
 
-Decode Raydium-style AMM state layouts.
+---
 
-📡 Observation Oracle: Retrieve cumulative token prices and time-weighted observations.
+## ⚙️ Configuration  
 
-🗄 Database-backed transaction history (SQLAlchemy ORM).
+Create a `.env` file in the project root:  
 
-🛠 REST API (FastAPI) for external integrations.
+```env
+# Solana RPC Configuration
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+SOLANA_WS_URL=wss://api.mainnet-beta.solana.com
 
-🔑 Modular architecture for easy extension.
+# Scanner Configuration
+SCAN_INTERVAL_MS=1000
+MAX_CONCURRENT_BLOCKS=10
+QUEUE_CAPACITY=1000
 
+# RabbitMQ Configuration
+RABBITMQ_ENABLED=false
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+RABBITMQ_PREFIX=solana_scanner
 
-⚙️ Installation
+# Filter Configuration
+ENABLED_FILTERS=raydium_v4_liquidity
+```
 
-Clone the repository:
+### Key Parameters  
 
-git clone https://github.com/ptechfusion19/volume-bot-py.git
-cd volume-bot-py
+| Variable              | Description                          | Default                      |
+|-----------------------|--------------------------------------|------------------------------|
+| `SOLANA_RPC_URL`      | Solana RPC endpoint                  | mainnet-beta RPC             |
+| `SOLANA_WS_URL`       | Solana WebSocket endpoint            | mainnet-beta WS              |
+| `SCAN_INTERVAL_MS`    | Interval (ms) between slot checks    | 1000                         |
+| `MAX_CONCURRENT_BLOCKS` | Max blocks processed in parallel   | 10                           |
+| `QUEUE_CAPACITY`      | Internal slot queue capacity         | 1000                         |
+| `RABBITMQ_ENABLED`    | Enable RabbitMQ integration          | false                        |
+| `RABBITMQ_URL`        | RabbitMQ connection string           | amqp://guest:guest@localhost |
+| `RABBITMQ_PREFIX`     | Queue prefix name                    | solana_scanner               |
+| `ENABLED_FILTERS`     | Comma-separated list of filters      | raydium_v4_liquidity         |
 
+---
 
-Create and activate a virtual environment:
+## 🚀 Getting Started  
 
-python3 -m venv venv
-source venv/bin/activate   # Linux / Mac
-venv\Scripts\activate      # Windows
+1. **Clone the repo**  
+   ```bash
+   git clone https://github.com/yourusername/solana-scanner.git
+   cd solana-scanner
+   ```
 
+2. **Install dependencies**  
+   Ensure you have **Rust 1.70+** and Cargo installed.  
+   ```bash
+   cargo build
+   ```
 
-Install dependencies:
+3. **Configure environment**  
+   Copy `.env.example` → `.env` and update values.  
 
-pip install -r requirements.txt
+4. **Run the scanner**  
+   ```bash
+   cargo run
+   ```
 
-🚀 Running the Project
+---
 
-Start the FastAPI app:
+## 🧩 Filters  
 
-uvicorn main:app --reload
+Filters are modular components implementing the `TransactionFilter` trait.  
 
+**Available Filters**  
+- **Raydium V4 Liquidity Filter** → Detects liquidity pool creation & updates in Raydium’s V4 contracts.  
 
-API will be available at:
-👉 http://127.0.0.1:8000
+**Enable a filter:**  
+```env
+ENABLED_FILTERS=raydium_v4_liquidity
+```
 
-Interactive Swagger docs:
-👉 http://127.0.0.1:8000/docs
+---
 
-🧩 Core Components
-🔹 PoolState
+## 📡 RabbitMQ Integration  
 
-Defined in state.py, it:
+If `RABBITMQ_ENABLED=true`, matched transactions are published to queues.  
 
-Fetches on-chain pool state via Solana RPC.
+- Queue names are prefixed with `RABBITMQ_PREFIX`.  
+- Each filter has its own queue (e.g., `solana_scanner_raydium_v4_liquidity`).  
+- Messages are serialized JSON payloads of processed transactions.  
 
-Parses AMM configuration, vault balances, LP mint details.
+---
 
-Retrieves observation oracle data (cumulative prices).
+## 🛠 Development  
 
-Calculates vault balances with/without fees.
+Run tests:  
+```bash
+cargo test
+```
 
-Example:
+With RabbitMQ feature flag:  
+```bash
+cargo run --features rabbitmq
+```
 
-from state import PoolState
-from solders.rpc import RpcClient
+Without RabbitMQ:  
+```bash
+cargo run --no-default-features
+```
 
-client = RpcClient("https://api.mainnet-beta.solana.com")
-pool = PoolState("<POOL_STATE_ADDRESS>", client)
+---
 
-print(pool.vault_amout)
-print(pool.amm_cfg)
+## 📊 Architecture  
 
-🔹 Database Transactions
+- **Slot Monitor** → Polls the Solana RPC for the latest slot and pushes new slots into a queue.  
+- **Block Processor** → Concurrently fetches blocks, applies filters, and handles matches.  
+- **Filters** → Check transactions and extract relevant events.  
+- **RabbitMQ (optional)** → Publishes matched events to external message queues.  
 
-Located in database/models/transaction.py + CRUD functions.
+---
 
-create_transaction() → Add a new buy/sell.
-
-get_transaction() → Fetch single transaction.
-
-get_transactions() → Fetch list.
-
-update_transaction() → Update fields.
-
-delete_transaction() → Remove entry.
-
-Example:
-
-from sqlalchemy.orm import Session
-from database.crud.transaction import create_transaction
-
-db: Session = ...
-txn = create_transaction(
-    db, wallet_id=1, task_id=42,
-    transaction_sig="5z7..abc",
-    amount=100.5, transaction_type="buy"
-)
-print(txn.id, txn.amount)
-
-🔹 API Routes
-
-Routers are defined in api/routes/router.py.
-Endpoints expose pool and transaction data for integrations.
-
-Example (Swagger UI):
-
-GET /transactions
-POST /transactions
-PUT /transactions/{id}
-DELETE /transactions/{id}
-
-📊 Example Use Case
-
-Initialize bot with a pool address.
-
-Bot fetches on-chain state (vault balances, LP supply, fees).
-
-Observations are retrieved for price calculations.
-
-Buy/sell activity is stored in the SQL database.
-
-REST API makes this data available to dashboards or other services.
+## 📜 License  
+MIT License. See [LICENSE](LICENSE) for details.
